@@ -1,0 +1,195 @@
+{
+  "workflows": {
+    "051MBjk3Mb53zZ8wlXCO3": {
+      "filename": "Lead Generation Workflow.workflow.ts"
+    },
+    "0Bq7bosQP3WO5toh": {
+      "filename": "Produktverlgleichs Workflow - Kurz.workflow.ts"
+    },
+    "0t4KRWpvhAyPcetF": {
+      "filename": "My workflow.workflow.ts"
+    },
+    "0xWEwJY1gRV8Zhfd": {
+      "filename": "Bautagesbericht - Patzig.workflow.ts"
+    },
+    "0ysRCJevHR46pMNr": {
+      "filename": "Lead Generation Workflow_0ysRCJev.workflow.ts"
+    },
+    "1QY3T2EKZBOBbU31": {
+      "filename": "Baustellenberichte – Telegram zu Google Sheets.workflow.ts"
+    },
+    "3Qep2qMYiytWliPK": {
+      "filename": "Test Workflow BTB - Mihad.workflow.ts"
+    },
+    "3zZdlguiu85Wxn5l": {
+      "filename": "Verbrauchsartikel-Reminder - Production.workflow.ts"
+    },
+    "4i_rKc0fEKaRXQjdI7sEL": {
+      "filename": "My workflow 3.workflow.ts"
+    },
+    "4upzbA63i7M3uFNn": {
+      "filename": "API Demo Workflow.workflow.ts"
+    },
+    "5Fl3PmZAY9GSh9ZO": {
+      "filename": "Telegram_new_1.workflow.ts"
+    },
+    "7pkcIxAYzFs02We1": {
+      "filename": "Bau Tagebuch Patzig.workflow.ts"
+    },
+    "9VWBrsN6b4rNI80R": {
+      "filename": "Baustellenberichte – Telegram zu Google Sheets_9VWBrsN6.workflow.ts"
+    },
+    "AJWzSC-yrsKtba-w_XGhD": {
+      "filename": "Unterschrift → Bild (Fester Webhook).workflow.ts"
+    },
+    "Abf6qVgMY5VsdU5nvBotJ": {
+      "filename": "My workflow 5.workflow.ts"
+    },
+    "BMekmX1LwOTy303l": {
+      "filename": "Produktverlgleichs Workflow.workflow.ts"
+    },
+    "ETut7H9caVuQJXvI": {
+      "filename": "My workflow_ETut7H9c.workflow.ts"
+    },
+    "GD0D76FX6i03zbEI": {
+      "filename": "firecrawlextraktion.workflow.ts"
+    },
+    "HjVDGqOkL2MEpMXi": {
+      "filename": "Neuraworks Leadgenerator Test-Workshop Apyfi.workflow.ts"
+    },
+    "I7ai4sP93M8In4oR": {
+      "filename": "Beispiel Produktvergleich Input.workflow.ts"
+    },
+    "IjPrOmF3lP4IaTwt": {
+      "filename": "Leadgenerierung Neurawork NEU 09.10.25.workflow.ts"
+    },
+    "K3IhcKtLgbuKb1wmMkTmw": {
+      "filename": "My workflow 4.workflow.ts"
+    },
+    "KNiPdRqomCG01f0QL5_5z": {
+      "filename": "Kundenverarbeitung- Verbrauchsartikel-Reminder Subworkflow.workflow.ts"
+    },
+    "MsjVo3CQFmyr6bFE": {
+      "filename": "Bauaufmaß Kalkulation Workflow.workflow.ts"
+    },
+    "MyU2w61e2adn2VyP": {
+      "filename": "Baustellenberichte – Telegram zu Google Sheets_MyU2w61e.workflow.ts"
+    },
+    "Nc0BMbfvRW2sICur": {
+      "filename": "Telegram_new_1_Nc0BMbfv.workflow.ts"
+    },
+    "OadTwuWCj5khvdBf": {
+      "filename": "Marketing Automation.workflow.ts"
+    },
+    "PBqg7BjrS5QZSLVc": {
+      "filename": "Muster Workflow zum zeigen (Holp).workflow.ts"
+    },
+    "Rdo7ZwUdPrANkKTu": {
+      "filename": "Wöchentliche Anbaugeräte-News E-Mail.workflow.ts"
+    },
+    "T2Fn0tyt9XQYGjdh": {
+      "filename": "Verbrauchsartikel-Reminder - Production (TEMPLATE).workflow.ts"
+    },
+    "UMozwXtUK02rywyr": {
+      "filename": "E-Mails zusammenfassen und Rückmeldung über Slack.workflow.ts"
+    },
+    "XCohumlQiBcPl_5gjI2I_": {
+      "filename": "90-Tage-Fahrplan - Discord Posting.workflow.ts"
+    },
+    "a0qkIH2WXFAUdFqf": {
+      "filename": "BTB Prozess - Patzig.workflow.ts"
+    },
+    "aLBIKJyJ20dy9cSq": {
+      "filename": "Bau Tagebuch Patzig_aLBIKJyJ.workflow.ts"
+    },
+    "bcqMm1SL8WlTxReQ": {
+      "filename": "90Tage Plan - Discord.workflow.ts"
+    },
+    "bvouxSWQMfQUF5uFhCxIU": {
+      "filename": "90-Tage-Fahrplan - Discord Posting_bvouxSWQ.workflow.ts"
+    },
+    "dBne89PcbrZsQKdl": {
+      "filename": "BTB - Patzig.workflow.ts"
+    },
+    "dpjrDmrViyBWIzxt": {
+      "filename": "My workflow_dpjrDmrV.workflow.ts"
+    },
+    "fLmv9OkPgPkEDNzO": {
+      "filename": "Bauaufmaß Pro - Neu.workflow.ts"
+    },
+    "hHcf7FYQVnMxLsoo": {
+      "filename": "Leads Scraping.workflow.ts"
+    },
+    "iS4IbZlCPDh834Do": {
+      "filename": "My workflow_iS4IbZlC.workflow.ts"
+    },
+    "iVYCGLsM94z4ywBM": {
+      "filename": "Verbrauchsartikel Reminder – MVP.workflow.ts"
+    },
+    "jc2VnPhTWf_fBJr3q8apv": {
+      "filename": "FTP Test.workflow.ts"
+    },
+    "kFhvOHqYqVbG-h0IS39IV": {
+      "filename": "Bautagebuch_Patzig final vor Änderungen.workflow.ts"
+    },
+    "kXZ4qdSjRyqnibAA": {
+      "filename": "Bauaufmaß Kalkulation - Minimaler Workflow.workflow.ts"
+    },
+    "nS1ku91ypS4OP3P9": {
+      "filename": "Telegram_workflow_final.workflow.ts"
+    },
+    "nqDQwQPcLBC0MYhj1IclQ": {
+      "lastSyncedHash": "667e32f55d9cd6d358944c72258cb591c819f4427220d461e3a23aea2f6b78a2",
+      "lastSyncedAt": "2026-03-31T09:41:27.246Z",
+      "filename": "n8n as code .31.03.workflow.ts"
+    },
+    "oi0jHBASchP9IsPUQ-7iY": {
+      "filename": "90-Tage-Fahrplan - bbi - Discord Posting.workflow.ts"
+    },
+    "ooNwWO7xuUdXpEHd": {
+      "filename": "Gebrauchtmaschinen Bewertung.workflow.ts"
+    },
+    "pjiwWd8lS2JdTruL": {
+      "filename": "Q-A-Professional-MarketingAutomation.workflow.ts"
+    },
+    "q9rgsKruV2FxsNYG": {
+      "filename": "Verbrauchsartikel-Reminder - Ghiath Edit Version.workflow.ts"
+    },
+    "rnbdlYe9srhc78UK": {
+      "filename": "Verbrauchsartikel Reminder.workflow.ts"
+    },
+    "sNzBg5oiVAObdDtC": {
+      "filename": "BTB Telegram Patzig 1.2.9.workflow.ts"
+    },
+    "tMZY6a9VxZ5cVKBI": {
+      "filename": "Verbrauchsartikel Reminder Errors.workflow.ts"
+    },
+    "tSz6m_2ye3WLVS9GYR2IX": {
+      "filename": "Anmeldebestätigung Sommerfest.workflow.ts"
+    },
+    "uVJneWcvky3kjgZa": {
+      "filename": "Leadgenerierung.workflow.ts"
+    },
+    "uqoexkMUXk8WgU1O8dtON": {
+      "filename": "Patzig Bautagebuch.workflow.ts"
+    },
+    "vD3snI964X064kZp": {
+      "filename": "Verbrauchsartikel-Reminder.workflow.ts"
+    },
+    "vFxMOV9ftY0l4xMB": {
+      "filename": "Form Submissiontrigger - Leadliste Google Maps Extraktor.workflow.ts"
+    },
+    "vUCu-tF6-2IrqfD7AiKE0": {
+      "filename": "Lead Qualifizierung.workflow.ts"
+    },
+    "vtPk6hQaTEgdr0qi": {
+      "filename": "Test Benjamin.workflow.ts"
+    },
+    "x9aErHYf1ReL3Vt2": {
+      "filename": "API Demo Workflow_x9aErHYf.workflow.ts"
+    },
+    "zv5_N-cxwVDC7KxUPAMQZ": {
+      "filename": "PDF Signieren.workflow.ts"
+    }
+  }
+}
