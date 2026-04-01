@@ -270,8 +270,21 @@ router.post('/:id/pdf', async (req: Request, res: Response) => {
     res.status(403).json({ error: 'Keine Berechtigung' }); return;
   }
 
+  // Load photos as base64 for PDF embedding
+  const photos = await db.select().from(reportPhotos).where(eq(reportPhotos.reportId, paramId(req)));
+  const { readFile } = await import('node:fs/promises');
+  const photoBase64s: string[] = [];
+  for (const photo of photos) {
+    try {
+      const absPath = path.resolve(config.uploads.dir, photo.filePath);
+      const buf = await readFile(absPath);
+      photoBase64s.push(`data:image/jpeg;base64,${buf.toString('base64')}`);
+    } catch { /* skip missing files */ }
+  }
+
   const { generatePdf } = await import('../services/pdf.service.js');
-  const pdfPath = await generatePdf(report.id, report.dataJson as any);
+  const reportData = { ...(report.dataJson as any), photoBase64s };
+  const pdfPath = await generatePdf(report.id, reportData);
 
   // Update report with PDF path
   await db.update(reports).set({ ftpReportPath: pdfPath }).where(eq(reports.id, paramId(req)));

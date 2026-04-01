@@ -26,6 +26,7 @@ interface PdfReportData {
   customerEmail: string;
   signatureBauleiter?: string;
   signatureCustomer?: string;
+  photoBase64s?: string[]; // base64 data URIs of uploaded photos
 }
 
 function esc(str: string | undefined | null): string {
@@ -107,6 +108,12 @@ function buildHtml(data: PdfReportData): string {
   ${machinesHtml ? `<h2>Geräte</h2>${machinesHtml}` : ''}
 
   ${data.muellBauschutt ? `<h2>Entsorgung</h2><p class="text-block">${esc(data.muellBauschutt)}</p>` : ''}
+
+  ${(data.photoBase64s && data.photoBase64s.length > 0) ? `
+  <h2>Fotos (${data.photoBase64s.length})</h2>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+    ${data.photoBase64s.map(b64 => `<img src="${b64}" style="width:160px;height:120px;object-fit:cover;border:1px solid #ddd;border-radius:4px;" />`).join('')}
+  </div>` : ''}
 
   <h2>Wetter</h2>
   ${weatherHtml}
