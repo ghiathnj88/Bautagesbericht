@@ -60,6 +60,35 @@ const extractUpload = multer({
   },
 });
 
+// Auto-generate PDF and upload to FTP when report is completed
+async function autoUploadToFtp(reportId: string, dataJson: any): Promise<void> {
+  // Load photos
+  const photos = await db.select().from(reportPhotos).where(eq(reportPhotos.reportId, reportId));
+  const { readFile } = await import('node:fs/promises');
+  const photoBase64s: string[] = [];
+  for (const photo of photos) {
+    try {
+      const absPath = path.resolve(config.uploads.dir, photo.filePath);
+      const buf = await readFile(absPath);
+      photoBase64s.push(`data:image/jpeg;base64,${buf.toString('base64')}`);
+    } catch { /* skip */ }
+  }
+
+  // Generate PDF
+  const { generatePdf } = await import('../services/pdf.service.js');
+  const pdfPath = await generatePdf(reportId, { ...dataJson, photoBase64s });
+
+  // Update report with PDF path
+  await db.update(reports).set({ ftpReportPath: pdfPath }).where(eq(reports.id, reportId));
+
+  // Upload to FTP
+  const { uploadToFtp } = await import('../services/ftp.service.js');
+  const bv = dataJson.bvNummer || reportId;
+  const datum = dataJson.datum?.replace(/\./g, '-') || 'unknown';
+  const remotePath = `/berichte/Bautagesbericht_${bv}_${datum}.pdf`;
+  await uploadToFtp(pdfPath, remotePath);
+}
+
 router.post('/extract-pdf', extractUpload.single('pdf'), async (req: Request, res: Response) => {
   if (!req.file) { res.status(400).json({ error: 'Keine PDF-Datei' }); return; }
 
@@ -144,6 +173,12 @@ router.post('/', async (req: Request, res: Response) => {
     dataJson: body,
     completedAt: body.status === 'complete' ? new Date() : null,
   }).returning();
+
+  // Auto generate PDF + FTP upload on complete
+  if (body.status === 'complete') {
+    autoUploadToFtp(report.id, body).catch((err: Error) => console.error('[FTP] Auto-upload failed:', err.message));
+  }
+
   res.status(201).json(report);
 });
 
@@ -166,6 +201,11 @@ router.put('/:id', async (req: Request, res: Response) => {
     dataJson: body,
     completedAt: body.status === 'complete' ? new Date() : existing.completedAt,
   }).where(eq(reports.id, paramId(req))).returning();
+
+  // Auto generate PDF + FTP upload on complete
+  if (body.status === 'complete') {
+    autoUploadToFtp(updated.id, body).catch((err: Error) => console.error('[FTP] Auto-upload failed:', err.message));
+  }
 
   res.json(updated);
 });
