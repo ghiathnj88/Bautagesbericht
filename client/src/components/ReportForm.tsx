@@ -697,48 +697,44 @@ export default function ReportForm() {
         {/* ==================== UNTERSCHRIFTEN ==================== */}
         <Section title={de.sections.unterschriften}>
           <div className="grid grid-cols-2 gap-4">
+            {/* Bauleiter */}
             <div>
               <p className="text-sm font-medium text-dark mb-2">{req('Bauleiter')}</p>
-              {data.signatureBauleiter ? (
-                <div>
-                  <img src={data.signatureBauleiter} alt="Unterschrift" className="border border-border rounded-lg w-full h-28 object-contain bg-white" />
-                  <button type="button" onClick={clearSigBauleiter}
-                    className="mt-2 px-3 py-1.5 border border-red-300 text-red-600 text-xs rounded-lg hover:bg-red-50 transition font-medium">
-                    Löschen
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div className="border-2 border-border rounded-lg overflow-hidden bg-white" style={{ touchAction: 'none' }}>
-                    <SignatureCanvas ref={sigBauleiterRef} canvasProps={{ style: { width: '100%', height: '112px' } }} onEnd={saveSigBauleiter} />
-                  </div>
-                  <button type="button" onClick={clearSigBauleiter}
-                    className="mt-2 px-3 py-1.5 border border-border text-mid text-xs rounded-lg hover:bg-gray-50 transition font-medium">
-                    Löschen
-                  </button>
-                </div>
+              <div className="border-2 border-border rounded-lg overflow-hidden bg-white" style={{ touchAction: 'none' }}>
+                <SignatureCanvas ref={sigBauleiterRef} canvasProps={{ style: { width: '100%', height: '112px' } }} />
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button type="button" onClick={saveSigBauleiter}
+                  className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition font-medium">
+                  Übernehmen
+                </button>
+                <button type="button" onClick={clearSigBauleiter}
+                  className="px-3 py-1.5 border border-red-300 text-red-600 text-xs rounded-lg hover:bg-red-50 transition font-medium">
+                  Löschen
+                </button>
+              </div>
+              {data.signatureBauleiter && (
+                <p className="text-xs text-green-600 mt-1">Unterschrift gespeichert</p>
               )}
             </div>
+            {/* Kunde */}
             <div>
               <p className="text-sm font-medium text-dark mb-2">Kunde</p>
-              {data.signatureCustomer ? (
-                <div>
-                  <img src={data.signatureCustomer} alt="Unterschrift" className="border border-border rounded-lg w-full h-28 object-contain bg-white" />
-                  <button type="button" onClick={clearSigCustomer}
-                    className="mt-2 px-3 py-1.5 border border-red-300 text-red-600 text-xs rounded-lg hover:bg-red-50 transition font-medium">
-                    Löschen
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div className="border-2 border-border rounded-lg overflow-hidden bg-white" style={{ touchAction: 'none' }}>
-                    <SignatureCanvas ref={sigCustomerRef} canvasProps={{ style: { width: '100%', height: '112px' } }} onEnd={saveSigCustomer} />
-                  </div>
-                  <button type="button" onClick={clearSigCustomer}
-                    className="mt-2 px-3 py-1.5 border border-border text-mid text-xs rounded-lg hover:bg-gray-50 transition font-medium">
-                    Löschen
-                  </button>
-                </div>
+              <div className="border-2 border-border rounded-lg overflow-hidden bg-white" style={{ touchAction: 'none' }}>
+                <SignatureCanvas ref={sigCustomerRef} canvasProps={{ style: { width: '100%', height: '112px' } }} />
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button type="button" onClick={saveSigCustomer}
+                  className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition font-medium">
+                  Übernehmen
+                </button>
+                <button type="button" onClick={clearSigCustomer}
+                  className="px-3 py-1.5 border border-red-300 text-red-600 text-xs rounded-lg hover:bg-red-50 transition font-medium">
+                  Löschen
+                </button>
+              </div>
+              {data.signatureCustomer && (
+                <p className="text-xs text-green-600 mt-1">Unterschrift gespeichert</p>
               )}
             </div>
           </div>
