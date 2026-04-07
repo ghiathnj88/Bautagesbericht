@@ -183,15 +183,34 @@ export default function ReportForm() {
     update({ photoPaths: data.photoPaths.filter(p => p !== id) });
   };
 
-  // === Weather ===
+  // === Weather (based on Baustellenadresse) ===
+  const [weatherLoading, setWeatherLoading] = useState(false);
+
   const loadWeather = async () => {
+    const address = data.lieferanschrift.trim();
+    if (!address) {
+      setError('Bitte zuerst die Lieferanschrift / Baustellenadresse eingeben.');
+      return;
+    }
+
+    setWeatherLoading(true);
     try {
-      const pos = await new Promise<GeolocationPosition>((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 })
+      // Geocode address via OpenStreetMap Nominatim
+      const geoResp = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'de' } }
       );
-      const { latitude, longitude } = pos.coords;
+      const geoData = await geoResp.json();
+      if (!geoData || geoData.length === 0) {
+        setError('Adresse konnte nicht gefunden werden. Bitte prüfen Sie die Baustellenadresse.');
+        return;
+      }
+
+      const { lat, lon } = geoData[0];
+
+      // Fetch weather from Open-Meteo
       const resp = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`
       );
       const json = await resp.json();
       const c = json.current;
@@ -211,7 +230,9 @@ export default function ReportForm() {
         },
       });
     } catch {
-      alert('Wetterdaten konnten nicht geladen werden. Bitte Standortfreigabe prüfen.');
+      setError('Wetterdaten konnten nicht geladen werden.');
+    } finally {
+      setWeatherLoading(false);
     }
   };
 
@@ -636,11 +657,11 @@ export default function ReportForm() {
               <div><span className="text-mid">Luftfeuchtigkeit:</span> <span className="font-medium">{data.weather.humidity}</span></div>
             </div>
           ) : (
-            <p className="text-sm text-mid">Wetterdaten werden per GPS-Standort geladen.</p>
+            <p className="text-sm text-mid">Wetterdaten werden anhand der Baustellenadresse geladen.</p>
           )}
-          <button type="button" onClick={loadWeather}
-            className="px-4 py-2 border border-border rounded-lg text-sm text-dark font-medium hover:bg-gray-50 transition">
-            Wetter aktualisieren
+          <button type="button" onClick={loadWeather} disabled={weatherLoading}
+            className="px-4 py-2 border border-border rounded-lg text-sm text-dark font-medium hover:bg-gray-50 transition disabled:opacity-50">
+            {weatherLoading ? 'Wird geladen...' : 'Wetter aktualisieren'}
           </button>
         </Section>
 
