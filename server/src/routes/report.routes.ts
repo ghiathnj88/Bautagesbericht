@@ -85,7 +85,7 @@ async function autoUploadToFtp(reportId: string, dataJson: any): Promise<void> {
   const { uploadToFtp } = await import('../services/ftp.service.js');
   const bv = dataJson.bvNummer || reportId;
   const datum = dataJson.datum?.replace(/\./g, '-') || 'unknown';
-  const remotePath = `/berichte/Bautagesbericht_${bv}_${datum}.pdf`;
+  const remotePath = `berichte/Bautagesbericht_${bv}_${datum}.pdf`;
   await uploadToFtp(pdfPath, remotePath);
 }
 

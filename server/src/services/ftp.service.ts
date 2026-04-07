@@ -16,8 +16,13 @@ export async function uploadToFtp(localRelPath: string, remotePath: string): Pro
   client.ftp.verbose = false;
   try {
     await client.access({ host, port, user, password: pass, secure: false });
-    await client.ensureDir(path.posix.dirname(remotePath));
-    await client.uploadFrom(path.resolve(config.uploads.dir, localRelPath), remotePath);
+    // Navigate to target directory, then upload just the filename
+    const dir = path.posix.dirname(remotePath);
+    const filename = path.posix.basename(remotePath);
+    if (dir && dir !== '.') {
+      await client.cd(dir);
+    }
+    await client.uploadFrom(path.resolve(config.uploads.dir, localRelPath), filename);
     console.log(`[FTP] Uploaded: ${remotePath}`);
   } finally {
     client.close();
