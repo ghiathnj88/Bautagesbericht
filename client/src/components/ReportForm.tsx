@@ -6,6 +6,7 @@ import { de } from '../i18n/de';
 import { ReportData, createEmptyReport, MachineItem, WorkerEntry } from '../types/report';
 import Section from './Section';
 import VoiceButton from './VoiceButton';
+import FtpPdfPicker from './FtpPdfPicker';
 
 const STORAGE_KEY = 'bautagesbericht_draft';
 const MAX_PHOTOS = 5;
@@ -50,9 +51,9 @@ export default function ReportForm() {
   const [uploading, setUploading] = useState(false);
   const [arbeitsauftragName, setArbeitsauftragName] = useState('');
   const [extracting, setExtracting] = useState(false);
+  const [ftpPickerOpen, setFtpPickerOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const pdfRef = useRef<HTMLInputElement>(null);
   const sigBauleiterRef = useRef<SignatureCanvas>(null);
   const sigCustomerRef = useRef<SignatureCanvas>(null);
 
@@ -106,22 +107,18 @@ export default function ReportForm() {
     update({ machines: m });
   };
 
-  // === PDF Upload + Extraction ===
-  const handlePdfUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    if (file.type !== 'application/pdf') { setError('Nur PDF-Dateien erlaubt.'); return; }
-
+  // === Arbeitsauftrag vom FTP-Server laden + Extraction ===
+  const handleFtpPdfSelect = async (remotePath: string, fileName: string) => {
     setExtracting(true);
     setError('');
     try {
-      // Extract text from PDF
-      const formData = new FormData();
-      formData.append('pdf', file);
-      const result = await apiFetch<{ extracted: Record<string, string> }>('/reports/extract-pdf', {
-        method: 'POST',
-        body: formData,
-      });
+      const result = await apiFetch<{ extracted: Record<string, string>; fileName: string }>(
+        '/reports/extract-pdf-ftp',
+        {
+          method: 'POST',
+          body: JSON.stringify({ remotePath }),
+        }
+      );
 
       const e = result.extracted;
       const updates: Partial<ReportData> = {};
@@ -131,12 +128,11 @@ export default function ReportForm() {
       if (e.kundennummer) updates.kundennummer = e.kundennummer;
       if (Object.keys(updates).length > 0) update(updates);
 
-      setArbeitsauftragName(file.name);
+      setArbeitsauftragName(fileName);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'PDF konnte nicht gelesen werden');
+      setError(err instanceof Error ? err.message : 'PDF konnte nicht vom FTP geladen werden');
     } finally {
       setExtracting(false);
-      if (pdfRef.current) pdfRef.current.value = '';
     }
   };
 
@@ -397,7 +393,6 @@ export default function ReportForm() {
 
         {/* ==================== PROJEKTDATEN ==================== */}
         <Section title={de.sections.projektdaten}>
-          <input ref={pdfRef} type="file" accept="application/pdf" onChange={e => handlePdfUpload(e.target.files)} className="hidden" />
           {arbeitsauftragName ? (
             <div className="flex items-center justify-between border border-green-300 bg-green-50 rounded-lg px-4 py-3">
               <div className="flex items-center gap-2">
@@ -406,17 +401,29 @@ export default function ReportForm() {
                 </svg>
                 <span className="text-sm text-dark">{arbeitsauftragName}</span>
               </div>
-              <button type="button" onClick={() => setArbeitsauftragName('')} className="text-xs text-red-500 hover:underline">Entfernen</button>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setFtpPickerOpen(true)} className="text-xs text-primary hover:underline">Anderen wählen</button>
+                <button type="button" onClick={() => setArbeitsauftragName('')} className="text-xs text-red-500 hover:underline">Entfernen</button>
+              </div>
             </div>
           ) : (
-            <div onClick={() => pdfRef.current?.click()}
-              className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary transition">
+            <button
+              type="button"
+              onClick={() => setFtpPickerOpen(true)}
+              disabled={extracting}
+              className="w-full border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary transition disabled:opacity-60 disabled:cursor-wait"
+            >
               <svg className="w-8 h-8 text-mid mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
               </svg>
-              <p className="text-sm text-mid">{extracting ? 'PDF wird ausgelesen...' : 'Arbeitsauftrag PDF hier ablegen oder klicken'}</p>
-            </div>
+              <p className="text-sm text-mid">{extracting ? 'PDF wird vom FTP geladen...' : 'Arbeitsauftrag vom FTP-Server wählen'}</p>
+            </button>
           )}
+          <FtpPdfPicker
+            open={ftpPickerOpen}
+            onClose={() => setFtpPickerOpen(false)}
+            onSelect={handleFtpPdfSelect}
+          />
 
           <div>
             <label className="block text-sm font-medium text-dark mb-1">{req('Auftraggeber')}</label>

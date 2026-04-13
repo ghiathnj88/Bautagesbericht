@@ -29,6 +29,10 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       UPLOADS_DIR: /app/uploads
+      FTP_HOST: ${FTP_HOST}
+      FTP_PORT: ${FTP_PORT:-21}
+      FTP_USER: ${FTP_USER}
+      FTP_PASSWORD: ${FTP_PASSWORD}
     volumes:
       - uploads:/app/uploads
     depends_on:

@@ -89,48 +89,87 @@ async function autoUploadToFtp(reportId: string, dataJson: any): Promise<void> {
   await uploadToFtp(pdfPath, remotePath);
 }
 
+function extractArbeitsauftragFields(text: string): Record<string, string> {
+  const extracted: Record<string, string> = {
+    auftraggeber: '',
+    lieferanschrift: '',
+    bvNummer: '',
+    kundennummer: '',
+  };
+  const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lower = line.toLowerCase();
+    if (lower.includes('auftraggeber') || lower.includes('kunde:') || lower.includes('kundenname')) {
+      extracted.auftraggeber = line.replace(/^.*?(auftraggeber|kunde|kundenname)[:\s]*/i, '').trim() || lines[i + 1]?.trim() || '';
+    }
+    if (lower.includes('lieferanschrift') || lower.includes('baustellenadresse') || lower.includes('baustelle:') || lower.includes('lieferadresse')) {
+      extracted.lieferanschrift = line.replace(/^.*?(lieferanschrift|baustellenadresse|baustelle|lieferadresse)[:\s]*/i, '').trim() || lines[i + 1]?.trim() || '';
+    }
+    if (lower.includes('bv-nr') || lower.includes('bv nr') || lower.includes('bv nummer') || lower.includes('projektnr') || lower.includes('projekt-nr')) {
+      const match = line.match(/(?:bv[- ]?n(?:umme)?r|projekt[- ]?nr)[.:\s]*([^\s,;]+)/i);
+      if (match) extracted.bvNummer = match[1];
+    }
+    if (lower.includes('kundennr') || lower.includes('kunden-nr') || lower.includes('kundennummer') || lower.includes('kd-nr') || lower.includes('kd nr')) {
+      const match = line.match(/(?:kunden?[- ]?n(?:umme)?r|kd[- ]?nr)[.:\s]*([^\s,;]+)/i);
+      if (match) extracted.kundennummer = match[1];
+    }
+  }
+  return extracted;
+}
+
 router.post('/extract-pdf', extractUpload.single('pdf'), async (req: Request, res: Response) => {
   if (!req.file) { res.status(400).json({ error: 'Keine PDF-Datei' }); return; }
 
   try {
     const pdfParse = (await import('pdf-parse')).default;
     const result = await pdfParse(req.file.buffer);
-    const text = result.text;
-
-    // Try to extract fields from common Arbeitsauftrag PDF formats
-    const extracted: Record<string, string> = {
-      auftraggeber: '',
-      lieferanschrift: '',
-      bvNummer: '',
-      kundennummer: '',
-    };
-
-    // Match patterns (flexible - works for various PDF formats)
-    const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const lower = line.toLowerCase();
-
-      if (lower.includes('auftraggeber') || lower.includes('kunde:') || lower.includes('kundenname')) {
-        extracted.auftraggeber = line.replace(/^.*?(auftraggeber|kunde|kundenname)[:\s]*/i, '').trim() || lines[i + 1]?.trim() || '';
-      }
-      if (lower.includes('lieferanschrift') || lower.includes('baustellenadresse') || lower.includes('baustelle:') || lower.includes('lieferadresse')) {
-        extracted.lieferanschrift = line.replace(/^.*?(lieferanschrift|baustellenadresse|baustelle|lieferadresse)[:\s]*/i, '').trim() || lines[i + 1]?.trim() || '';
-      }
-      if (lower.includes('bv-nr') || lower.includes('bv nr') || lower.includes('bv nummer') || lower.includes('projektnr') || lower.includes('projekt-nr')) {
-        const match = line.match(/(?:bv[- ]?n(?:umme)?r|projekt[- ]?nr)[.:\s]*([^\s,;]+)/i);
-        if (match) extracted.bvNummer = match[1];
-      }
-      if (lower.includes('kundennr') || lower.includes('kunden-nr') || lower.includes('kundennummer') || lower.includes('kd-nr') || lower.includes('kd nr')) {
-        const match = line.match(/(?:kunden?[- ]?n(?:umme)?r|kd[- ]?nr)[.:\s]*([^\s,;]+)/i);
-        if (match) extracted.kundennummer = match[1];
-      }
-    }
-
-    res.json({ extracted, rawText: text.substring(0, 2000) });
+    const extracted = extractArbeitsauftragFields(result.text);
+    res.json({ extracted, rawText: result.text.substring(0, 2000) });
   } catch (err) {
     res.status(500).json({ error: 'PDF konnte nicht gelesen werden' });
+  }
+});
+
+// === FTP Browse (for Arbeitsauftrag picker) ===
+
+router.get('/ftp-browse', async (req: Request, res: Response) => {
+  const raw = ((req.query.path as string) || '/').trim();
+  const cleanPath = path.posix.normalize(raw.startsWith('/') ? raw : '/' + raw);
+  if (cleanPath.split('/').some((s) => s === '..')) {
+    res.status(400).json({ error: 'Ungültiger Pfad' });
+    return;
+  }
+  try {
+    const { listFtpDir } = await import('../services/ftp.service.js');
+    const entries = await listFtpDir(cleanPath);
+    res.json({ path: cleanPath, entries });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'FTP-Fehler';
+    console.error('[FTP] Browse failed:', msg);
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.post('/extract-pdf-ftp', async (req: Request, res: Response) => {
+  const remotePath = (req.body?.remotePath as string | undefined)?.trim();
+  if (!remotePath) { res.status(400).json({ error: 'Kein Pfad angegeben' }); return; }
+  const cleanPath = path.posix.normalize(remotePath.startsWith('/') ? remotePath : '/' + remotePath);
+  if (cleanPath.split('/').some((s) => s === '..') || !cleanPath.toLowerCase().endsWith('.pdf')) {
+    res.status(400).json({ error: 'Ungültiger PDF-Pfad' });
+    return;
+  }
+  try {
+    const { downloadFromFtp } = await import('../services/ftp.service.js');
+    const buf = await downloadFromFtp(cleanPath);
+    const pdfParse = (await import('pdf-parse')).default;
+    const result = await pdfParse(buf);
+    const extracted = extractArbeitsauftragFields(result.text);
+    res.json({ extracted, fileName: path.posix.basename(cleanPath) });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'PDF konnte nicht geladen werden';
+    console.error('[FTP] Extract failed:', msg);
+    res.status(500).json({ error: msg });
   }
 });
 
