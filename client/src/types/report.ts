@@ -11,6 +11,11 @@ export interface MachineItem {
   durationMinutes: number;
 }
 
+export interface EntsorgungItem {
+  material: string;
+  menge: string;
+}
+
 export interface WeatherData {
   temperature: string;
   condition: string;
@@ -32,6 +37,7 @@ export interface ReportData {
   bauleiterAnfang: string;
   bauleiterEnde: string;
   bauleiterPause: string;
+  bauleiterAlleine: boolean;
   workers: WorkerEntry[];
 
   // Ausgeführte Arbeiten (min 4)
@@ -43,6 +49,7 @@ export interface ReportData {
 
   // Geräte & Entsorgung (optional)
   machines: MachineItem[];
+  entsorgung: EntsorgungItem[];
   muellBauschutt: string;
 
   // Fotos (min 5) - file paths relative to /uploads/
@@ -65,6 +72,10 @@ export interface ReportData {
 
   // Arbeitsauftrag PDF
   arbeitsauftragPath: string;
+
+  // FTP-Quellverzeichnis: wenn der Auftrag aus einem FTP-Ordner stammt,
+  // wird der fertige Bautagesbericht beim Senden in genau diesen Ordner zurückgeschrieben.
+  ftpSourcePath: string;
 }
 
 export function createEmptyReport(): ReportData {
@@ -78,11 +89,13 @@ export function createEmptyReport(): ReportData {
     bauleiterAnfang: '07:00',
     bauleiterEnde: '16:00',
     bauleiterPause: '12:00-12:30',
+    bauleiterAlleine: false,
     workers: [],
-    tasks: ['', '', '', ''],
+    tasks: [''],
     materialVerwendet: '',
     verbrauchsmaterialFahrzeug: '',
     machines: [],
+    entsorgung: [],
     muellBauschutt: '',
     photoPaths: [],
     weather: { temperature: '', condition: '', wind: '', humidity: '', loaded: false },
@@ -93,5 +106,6 @@ export function createEmptyReport(): ReportData {
     signatureCustomer: '',
     customerEmail: '',
     arbeitsauftragPath: '',
+    ftpSourcePath: '',
   };
 }

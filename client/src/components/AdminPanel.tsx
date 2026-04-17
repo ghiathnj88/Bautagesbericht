@@ -166,9 +166,13 @@ function ReportsTab() {
             <div>
               <h4 className="text-sm font-semibold text-dark mb-2">Tätigkeiten</h4>
               <ol className="list-decimal list-inside space-y-1">
-                {d.tasks.filter((t: string) => t && t.trim()).map((t: string, i: number) => (
-                  <li key={i} className="text-sm text-mid">{t}</li>
-                ))}
+                {d.tasks
+                  .flatMap((t: string) => (t || '').split('\n'))
+                  .map((l: string) => l.trim())
+                  .filter((l: string) => l.length > 0)
+                  .map((l: string, i: number) => (
+                    <li key={i} className="text-sm text-mid">{l}</li>
+                  ))}
               </ol>
             </div>
           )}

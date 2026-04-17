@@ -1,7 +1,19 @@
 import puppeteer from 'puppeteer';
 import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const logoPath = path.resolve(__dirname, '../../assets/patzig-logo.png');
+let logoDataUri = '';
+try {
+  const buf = readFileSync(logoPath);
+  logoDataUri = `data:image/png;base64,${buf.toString('base64')}`;
+} catch {
+  console.warn('[PDF] Logo nicht gefunden:', logoPath);
+}
 
 interface PdfReportData {
   bvNummer: string;
@@ -18,6 +30,7 @@ interface PdfReportData {
   materialVerwendet: string;
   verbrauchsmaterialFahrzeug: string;
   machines: { name: string; durationHours: number; durationMinutes: number }[];
+  entsorgung?: { material: string; menge: string }[];
   muellBauschutt: string;
   weather?: { temperature: string; condition: string; wind: string; humidity: string; loaded: boolean };
   vorkommnisse: string;
@@ -35,11 +48,34 @@ function esc(str: string | undefined | null): string {
 }
 
 function buildHtml(data: PdfReportData): string {
-  const tasksHtml = (data.tasks || []).filter(t => t && t.trim()).map(t => `<li>${esc(t)}</li>`).join('');
+  const tasksHtml = (data.tasks || [])
+    .flatMap(t => (t || '').split('\n'))
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .map(l => `<li>${esc(l)}</li>`)
+    .join('');
 
   const workersHtml = (data.workers || []).map(w =>
     `<tr><td>${esc(w.name)}</td><td>${esc(w.anfang)}</td><td>${esc(w.ende)}</td><td>${esc(w.pause)}</td></tr>`
   ).join('');
+
+  const PHOTOS_PER_PAGE = 6;
+  const photoGroups: string[][] = [];
+  for (let i = 0; i < (data.photoBase64s?.length || 0); i += PHOTOS_PER_PAGE) {
+    photoGroups.push(data.photoBase64s!.slice(i, i + PHOTOS_PER_PAGE));
+  }
+  const photosHtml = photoGroups.length > 0
+    ? `<div class="photos-section">
+         <h2>Fotos (${data.photoBase64s!.length})</h2>
+         ${photoGroups.map(group => `
+           <div class="photo-page-group">
+             <div class="photo-grid">
+               ${group.map(b64 => `<img src="${b64}" />`).join('')}
+             </div>
+           </div>
+         `).join('')}
+       </div>`
+    : '';
 
   const machinesHtml = (data.machines || []).length > 0
     ? `<table><tr><th>Maschine</th><th>Einsatzdauer</th></tr>
@@ -74,12 +110,20 @@ function buildHtml(data: PdfReportData): string {
   .signature-box { display: inline-block; width: 45%; text-align: center; margin-top: 20px; }
   .signature-box img { max-height: 60px; }
   .signature-label { border-top: 1px solid #333; margin-top: 4px; padding-top: 4px; font-size: 10px; }
+  .report-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .report-header .logo { height: 60px; }
   .company { font-size: 9px; color: #999; text-align: right; }
+  .photo-page-group { page-break-inside: avoid; page-break-after: always; margin-top: 6px; }
+  .photos-section .photo-page-group:last-of-type { page-break-after: auto; }
+  .photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; margin-top: 4mm; }
+  .photo-grid img { width: 100%; height: 80mm; object-fit: cover; border: 1px solid #ddd; border-radius: 4px; }
 </style>
 </head>
 <body>
-  <p class="company">Patzig GmbH &amp; Co. KG</p>
-  <h1>Bautagesbericht</h1>
+  <div class="report-header">
+    <h1 style="margin:0;">Bautagesbericht</h1>
+    ${logoDataUri ? `<img src="${logoDataUri}" class="logo" alt="Patzig Logo" />` : '<p class="company">Patzig GmbH &amp; Co. KG</p>'}
+  </div>
 
   <div class="header-info">
     <div><strong>BV-Nr.:</strong> ${esc(data.bvNummer)}${data.kundennummer ? ` &nbsp; <strong>Kd-Nr.:</strong> ${esc(data.kundennummer)}` : ''}</div>
@@ -107,13 +151,12 @@ function buildHtml(data: PdfReportData): string {
 
   ${machinesHtml ? `<h2>Geräte</h2>${machinesHtml}` : ''}
 
-  ${data.muellBauschutt ? `<h2>Entsorgung</h2><p class="text-block">${esc(data.muellBauschutt)}</p>` : ''}
-
-  ${(data.photoBase64s && data.photoBase64s.length > 0) ? `
-  <h2>Fotos (${data.photoBase64s.length})</h2>
-  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
-    ${data.photoBase64s.map(b64 => `<img src="${b64}" style="width:160px;height:120px;object-fit:cover;border:1px solid #ddd;border-radius:4px;" />`).join('')}
-  </div>` : ''}
+  ${(data.entsorgung && data.entsorgung.length > 0)
+    ? `<h2>Entsorgung</h2>
+       <table><tr><th>Material</th><th>Menge</th></tr>
+       ${data.entsorgung.map(e => `<tr><td>${esc(e.material)}</td><td>${esc(e.menge)}</td></tr>`).join('')}
+       </table>`
+    : (data.muellBauschutt ? `<h2>Entsorgung</h2><p class="text-block">${esc(data.muellBauschutt)}</p>` : '')}
 
   <h2>Wetter</h2>
   ${weatherHtml}
@@ -123,6 +166,8 @@ function buildHtml(data: PdfReportData): string {
   ${data.wasLiefGut ? `<p><strong>Was lief gut:</strong></p><p class="text-block">${esc(data.wasLiefGut)}</p>` : ''}
   ${data.wasLiefNichtGut ? `<p><strong>Was lief nicht gut:</strong></p><p class="text-block">${esc(data.wasLiefNichtGut)}</p>` : ''}
   ${!data.vorkommnisse && !data.wasLiefGut && !data.wasLiefNichtGut ? '<p class="muted">Keine Bemerkungen</p>' : ''}
+
+  ${photosHtml}
 
   <div style="margin-top: 30px;">
     <div class="signature-box">

@@ -1,17 +1,29 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, TextareaHTMLAttributes } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
 import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from '../api/client';
 import { de } from '../i18n/de';
-import { ReportData, createEmptyReport, MachineItem, WorkerEntry } from '../types/report';
+import { ReportData, createEmptyReport, MachineItem, WorkerEntry, EntsorgungItem } from '../types/report';
 import Section from './Section';
 import VoiceButton from './VoiceButton';
 import FtpPdfPicker from './FtpPdfPicker';
 
 const STORAGE_KEY = 'bautagesbericht_draft';
+
+type AutoTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string };
+function AutoTextarea({ value, className, ...rest }: AutoTextareaProps) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const ta = ref.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [value]);
+  return <textarea ref={ref} value={value} className={className} {...rest} />;
+}
 const MAX_PHOTOS = 5;
 const MIN_PHOTOS = 5;
-const MIN_TASKS = 4;
 
 /**
  * Creates onLive/onFinal props for VoiceButton.
@@ -33,15 +45,28 @@ function voiceProps(
 }
 
 function loadDraft(): ReportData {
+  // Bautag = heute. Auch wenn ein Draft aus einer früheren Sitzung wiederhergestellt
+  // wird, soll das Datum auf den aktuellen Tag gesetzt werden, sonst landen Berichte
+  // mit veraltetem Datum im Dateinamen und in der DB.
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...createEmptyReport(), ...JSON.parse(raw) };
+    if (raw) {
+      const draft = { ...createEmptyReport(), ...JSON.parse(raw), datum: today };
+      // Leere Task-Slots aus altem Draft zusammenfalten (legacy: ['','','',''])
+      if (Array.isArray(draft.tasks) && draft.tasks.every((t: string) => !t || !t.trim())) {
+        draft.tasks = [''];
+      }
+      return draft;
+    }
   } catch { /* ignore */ }
   return createEmptyReport();
 }
 
 export default function ReportForm() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<ReportData>(loadDraft);
   const [reportId, setReportId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -107,8 +132,21 @@ export default function ReportForm() {
     update({ machines: m });
   };
 
+  // === Entsorgung ===
+  const addEntsorgung = () => {
+    update({ entsorgung: [...data.entsorgung, { material: '', menge: '' }] });
+  };
+  const removeEntsorgung = (i: number) => {
+    update({ entsorgung: data.entsorgung.filter((_, idx) => idx !== i) });
+  };
+  const updateEntsorgung = (i: number, field: keyof EntsorgungItem, val: string) => {
+    const e = [...data.entsorgung];
+    e[i] = { ...e[i], [field]: val };
+    update({ entsorgung: e });
+  };
+
   // === Arbeitsauftrag vom FTP-Server laden + Extraction ===
-  const handleFtpPdfSelect = async (remotePath: string, fileName: string) => {
+  const handleFtpPdfSelect = useCallback(async (remotePath: string, fileName: string) => {
     setExtracting(true);
     setError('');
     try {
@@ -120,13 +158,29 @@ export default function ReportForm() {
         }
       );
 
+      // Decide where the finished Bautagesbericht should later be written on FTP.
+      // Convention (professional project layout):
+      //   .../Arbeitsauftrag <NN>/
+      //     ├── Arbeitsauftrag/   ← PDF des Auftrags liegt hier
+      //     ├── Bilder/
+      //     └── Bautagesbericht/  ← fertiger Bericht soll hierhin
+      // If the picked PDF's parent folder is literally named "Arbeitsauftrag",
+      // redirect the save target to the sibling folder "Bautagesbericht".
+      // Otherwise fall back to the same folder (old behavior).
+      const parentDir = remotePath.substring(0, remotePath.lastIndexOf('/')) || '/';
+      const segments = parentDir.split('/');
+      const lastSegment = segments[segments.length - 1];
+      const ftpSourcePath = lastSegment === 'Arbeitsauftrag'
+        ? segments.slice(0, -1).join('/') + '/Bautagesbericht'
+        : parentDir;
+
       const e = result.extracted;
-      const updates: Partial<ReportData> = {};
+      const updates: Partial<ReportData> = { ftpSourcePath };
       if (e.auftraggeber) updates.auftraggeber = e.auftraggeber;
       if (e.lieferanschrift) updates.lieferanschrift = e.lieferanschrift;
       if (e.bvNummer) updates.bvNummer = e.bvNummer;
       if (e.kundennummer) updates.kundennummer = e.kundennummer;
-      if (Object.keys(updates).length > 0) update(updates);
+      update(updates);
 
       setArbeitsauftragName(fileName);
     } catch (err) {
@@ -134,7 +188,17 @@ export default function ReportForm() {
     } finally {
       setExtracting(false);
     }
-  };
+  }, [update]);
+
+  // If navigated here from the FTP browser with ?auftrag=<path>, auto-import
+  // that PDF once on mount. Then clear the query so a refresh doesn't re-trigger.
+  useEffect(() => {
+    const auftragPath = searchParams.get('auftrag');
+    if (!auftragPath) return;
+    const fileName = auftragPath.substring(auftragPath.lastIndexOf('/') + 1) || auftragPath;
+    handleFtpPdfSelect(auftragPath, fileName);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams, handleFtpPdfSelect]);
 
   // === Photo upload ===
   const handlePhotos = async (files: FileList | null) => {
@@ -179,13 +243,14 @@ export default function ReportForm() {
     update({ photoPaths: data.photoPaths.filter(p => p !== id) });
   };
 
-  // === Weather (based on Baustellenadresse) ===
+  // === Weather ===
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherLocation, setWeatherLocation] = useState('');
 
   const loadWeather = async () => {
-    const address = data.lieferanschrift.trim();
+    const address = weatherLocation.trim();
     if (!address) {
-      setError('Bitte zuerst die Lieferanschrift / Baustellenadresse eingeben.');
+      setError('Bitte Adresse, Stadt oder PLZ für die Wetterabfrage eingeben.');
       return;
     }
 
@@ -255,14 +320,18 @@ export default function ReportForm() {
     if (!data.datum.trim()) errs.push('Datum ist ein Pflichtfeld');
     if (!data.bauleiter.trim()) errs.push('Bauleiter ist ein Pflichtfeld');
     if (!data.bauleiterAnfang || !data.bauleiterEnde) errs.push('Bauleiter Arbeitszeiten sind Pflicht');
-    if (data.workers.length === 0) errs.push('Mindestens ein Mitarbeiter erforderlich');
-    for (let i = 0; i < data.workers.length; i++) {
-      const w = data.workers[i];
-      if (!w.name.trim()) errs.push(`Mitarbeiter ${i + 1}: Name fehlt`);
-      if (!w.anfang || !w.ende) errs.push(`Mitarbeiter ${i + 1}: Zeiten fehlen`);
+    if (!data.bauleiterAlleine) {
+      if (data.workers.length === 0) errs.push('Mindestens ein Mitarbeiter erforderlich (oder Häkchen "alleine auf der Baustelle" setzen)');
+      for (let i = 0; i < data.workers.length; i++) {
+        const w = data.workers[i];
+        if (!w.name.trim()) errs.push(`Mitarbeiter ${i + 1}: Name fehlt`);
+        if (!w.anfang || !w.ende) errs.push(`Mitarbeiter ${i + 1}: Zeiten fehlen`);
+      }
     }
-    const filledTasks = data.tasks.filter(t => t.trim()).length;
-    if (filledTasks < MIN_TASKS) errs.push(`Mindestens ${MIN_TASKS} Tätigkeiten erforderlich (${filledTasks}/${MIN_TASKS})`);
+    const taskLines = data.tasks.flatMap(t => t.split('\n')).map(l => l.trim()).filter(l => l.length > 0);
+    if (taskLines.length === 0) {
+      errs.push('Mindestens eine Tätigkeit muss eingetragen werden');
+    }
     if (!data.materialVerwendet.trim()) errs.push('Verwendetes Material ist ein Pflichtfeld');
     if (!data.verbrauchsmaterialFahrzeug.trim()) errs.push('Verbrauchsmaterial vom Fahrzeug ist ein Pflichtfeld');
     if (data.photoPaths.length < MIN_PHOTOS) errs.push(`Mindestens ${MIN_PHOTOS} Fotos erforderlich (${data.photoPaths.length}/${MIN_PHOTOS})`);
@@ -367,16 +436,23 @@ export default function ReportForm() {
       {/* Header */}
       <header className="bg-primary text-white px-4 py-3 flex items-center justify-between sticky top-0 z-50 shadow-md">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-            <span className="text-white text-sm font-bold">P</span>
-          </div>
-          <div>
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-md transition"
+            title="Zum Hauptmenü"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+            </svg>
+            <span className="text-xs font-medium">Hauptmenü</span>
+          </button>
+          <div className="hidden sm:block">
             <h1 className="text-sm font-bold">{de.app.title}</h1>
             <p className="text-xs text-white/70">{de.app.company}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-white/70">{user?.fullName}</span>
+          <span className="text-xs text-white/70 hidden sm:inline">{user?.fullName}</span>
           <button onClick={logout} className="text-xs text-white/70 hover:text-white transition">{de.auth.logout}</button>
         </div>
       </header>
@@ -433,7 +509,7 @@ export default function ReportForm() {
           <div>
             <label className="block text-sm font-medium text-dark mb-1">{req('Lieferanschrift / Baustellenadresse')}</label>
             <input type="text" value={data.lieferanschrift} onChange={e => update({ lieferanschrift: e.target.value })}
-              placeholder="Straße, PLZ Ort" className="input-field" />
+              placeholder="Bitte tragen Sie die Adresse ein" className="input-field" />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
@@ -486,63 +562,80 @@ export default function ReportForm() {
 
           {/* Mitarbeiter */}
           <div className="border-t border-border pt-4 mt-2">
-            <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-dark">{req(`Mitarbeiter (${data.workers.length})`)}</label>
-              <button type="button" onClick={addWorker}
-                className="text-sm text-primary hover:text-red-700 font-medium transition">
-                + Mitarbeiter hinzufügen
-              </button>
-            </div>
+            <label className="flex items-start gap-2 mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={data.bauleiterAlleine}
+                onChange={e => update({ bauleiterAlleine: e.target.checked, workers: e.target.checked ? [] : data.workers })}
+                className="mt-0.5 w-4 h-4 accent-primary"
+              />
+              <span className="text-sm text-dark">Ich arbeite alleine auf der Baustelle (keine weiteren Mitarbeiter)</span>
+            </label>
 
-            {data.workers.map((w, i) => (
-              <div key={i} className="border border-border rounded-lg p-3 mb-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-primary">Mitarbeiter {i + 1}</span>
-                  <button type="button" onClick={() => removeWorker(i)} className="text-xs text-red-500 hover:underline">Entfernen</button>
+            {!data.bauleiterAlleine && (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-medium text-dark">{req(`Mitarbeiter (${data.workers.length})`)}</label>
+                  <button type="button" onClick={addWorker}
+                    className="text-sm text-primary hover:text-red-700 font-medium transition">
+                    + Mitarbeiter hinzufügen
+                  </button>
                 </div>
-                <div className="relative">
-                  <input type="text" value={w.name} onChange={e => updateWorker(i, 'name', e.target.value)}
-                    placeholder="Name" className="input-field pr-10" />
-                  <VoiceButton {...voiceProps(v => updateWorker(i, 'name', v), w.name, 'replace')} />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-xs text-mid mb-1">Anfang</label>
-                    <input type="time" value={w.anfang} onChange={e => updateWorker(i, 'anfang', e.target.value)} className="input-field text-xs" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-mid mb-1">Ende</label>
-                    <input type="time" value={w.ende} onChange={e => updateWorker(i, 'ende', e.target.value)} className="input-field text-xs" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-mid mb-1">Pause</label>
-                    <input type="text" value={w.pause} onChange={e => updateWorker(i, 'pause', e.target.value)}
-                      placeholder="12:00-12:30" className="input-field text-xs" />
-                  </div>
-                </div>
-              </div>
-            ))}
 
-            {data.workers.length === 0 && (
-              <p className="text-sm text-mid italic">Noch keine Mitarbeiter hinzugefügt.</p>
+                {data.workers.map((w, i) => (
+                  <div key={i} className="border border-border rounded-lg p-3 mb-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-primary">Mitarbeiter {i + 1}</span>
+                      <button type="button" onClick={() => removeWorker(i)} className="text-xs text-red-500 hover:underline">Entfernen</button>
+                    </div>
+                    <div className="relative">
+                      <input type="text" value={w.name} onChange={e => updateWorker(i, 'name', e.target.value)}
+                        placeholder="Name" className="input-field pr-10" />
+                      <VoiceButton {...voiceProps(v => updateWorker(i, 'name', v), w.name, 'replace')} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs text-mid mb-1">Anfang</label>
+                        <input type="time" value={w.anfang} onChange={e => updateWorker(i, 'anfang', e.target.value)} className="input-field text-xs" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-mid mb-1">Ende</label>
+                        <input type="time" value={w.ende} onChange={e => updateWorker(i, 'ende', e.target.value)} className="input-field text-xs" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-mid mb-1">Pause</label>
+                        <input type="text" value={w.pause} onChange={e => updateWorker(i, 'pause', e.target.value)}
+                          placeholder="12:00-12:30" className="input-field text-xs" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {data.workers.length === 0 && (
+                  <p className="text-sm text-mid italic">Noch keine Mitarbeiter hinzugefügt.</p>
+                )}
+              </>
             )}
           </div>
         </Section>
 
         {/* ==================== AUSGEFÜHRTE ARBEITEN ==================== */}
         <Section title={de.sections.arbeiten}>
-          <p className="text-sm text-mid">Mindestens {MIN_TASKS} Tätigkeiten angeben <span className="text-primary">*</span></p>
+          <p className="text-sm text-mid">
+            Bitte tragen Sie Ihre ausgeführte Arbeit hier ein. <span className="text-primary">*</span>
+            <span className="block text-xs text-mid italic mt-1">Empfehlung: Verfassen Sie nach Möglichkeit mindestens vier ausgeführte Arbeiten.</span>
+          </p>
           {data.tasks.map((task, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-sm text-mid w-6">{i + 1}.</span>
+            <div key={i} className="flex items-start gap-2">
               <div className="relative flex-1">
-                <input type="text" value={task} onChange={e => updateTask(i, e.target.value)}
-                  placeholder="Tätigkeit beschreiben" className="input-field pr-10" />
+                <AutoTextarea value={task} onChange={e => updateTask(i, e.target.value)}
+                  placeholder="Tätigkeiten Beschreibung"
+                  rows={4} className="input-field pr-10 resize-y overflow-hidden" />
                 <VoiceButton {...voiceProps(v => updateTask(i, v), data.tasks[i])} />
               </div>
               <button type="button" onClick={() => removeTask(i)}
                 disabled={data.tasks.length <= 1}
-                className="text-red-400 hover:text-red-600 disabled:opacity-20 transition px-1 text-lg">&times;</button>
+                className="text-red-400 hover:text-red-600 disabled:opacity-20 transition px-1 text-lg mt-2">&times;</button>
             </div>
           ))}
           <button type="button" onClick={addTask}
@@ -556,16 +649,16 @@ export default function ReportForm() {
           <div>
             <label className="block text-sm font-medium text-dark mb-1">{req('Verwendetes Material')}</label>
             <div className="relative">
-              <textarea value={data.materialVerwendet} onChange={e => update({ materialVerwendet: e.target.value })}
-                placeholder="Welches Material wurde heute verwendet?" rows={3} className="input-field pr-10 resize-y" />
+              <AutoTextarea value={data.materialVerwendet} onChange={e => update({ materialVerwendet: e.target.value })}
+                placeholder="Welches Material wurde heute verwendet?" rows={3} className="input-field pr-10 resize-y overflow-hidden" />
               <VoiceButton {...voiceProps(v => update({ materialVerwendet: v }), data.materialVerwendet)} />
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-dark mb-1">{req('Verbrauchsmaterial vom Fahrzeug')}</label>
             <div className="relative">
-              <textarea value={data.verbrauchsmaterialFahrzeug} onChange={e => update({ verbrauchsmaterialFahrzeug: e.target.value })}
-                placeholder="Welches Verbrauchsmaterial aus dem Fahrzeug?" rows={3} className="input-field pr-10 resize-y" />
+              <AutoTextarea value={data.verbrauchsmaterialFahrzeug} onChange={e => update({ verbrauchsmaterialFahrzeug: e.target.value })}
+                placeholder="Welches Verbrauchsmaterial aus dem Fahrzeug?" rows={3} className="input-field pr-10 resize-y overflow-hidden" />
               <VoiceButton {...voiceProps(v => update({ verbrauchsmaterialFahrzeug: v }), data.verbrauchsmaterialFahrzeug)} />
             </div>
           </div>
@@ -603,12 +696,93 @@ export default function ReportForm() {
             + Maschine hinzufügen
           </button>
 
+          <div className="border-t border-border pt-4 mt-2">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-medium text-dark">Entsorgung ({data.entsorgung.length})</label>
+              <button type="button" onClick={addEntsorgung}
+                className="text-sm text-primary hover:text-red-700 font-medium transition">
+                + Entsorgung hinzufügen
+              </button>
+            </div>
+
+            {data.entsorgung.map((e, i) => (
+              <div key={i} className="border border-border rounded-lg p-3 mb-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-primary">Entsorgung {i + 1}</span>
+                  <button type="button" onClick={() => removeEntsorgung(i)} className="text-xs text-red-500 hover:underline">Entfernen</button>
+                </div>
+                <div className="relative">
+                  <input type="text" value={e.material} onChange={ev => updateEntsorgung(i, 'material', ev.target.value)}
+                    placeholder="Material (z.B. Bauschutt, Mineralwolle, Asbest)" className="input-field pr-10" />
+                  <VoiceButton {...voiceProps(v => updateEntsorgung(i, 'material', v), e.material, 'replace')} />
+                </div>
+                <div>
+                  <input type="text" value={e.menge} onChange={ev => updateEntsorgung(i, 'menge', ev.target.value)}
+                    placeholder="Menge (z.B. 200 kg, 3 Container)" className="input-field" />
+                </div>
+              </div>
+            ))}
+
+            {data.entsorgung.length === 0 && (
+              <p className="text-sm text-mid italic">Keine Entsorgung eingetragen (optional).</p>
+            )}
+          </div>
+        </Section>
+
+        {/* ==================== FOTOS ==================== */}
+        {/* ==================== WETTER ==================== */}
+        <Section title={de.sections.wetter}>
           <div>
-            <label className="block text-sm font-medium text-dark mb-1">Müll/Bauschutt (kg)</label>
+            <label className="block text-sm font-medium text-dark mb-1">Standort für Wetterabfrage</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={weatherLocation}
+                onChange={e => setWeatherLocation(e.target.value)}
+                placeholder="Bitte tragen Sie die Adresse ein"
+                className="input-field flex-1"
+              />
+              <button type="button" onClick={loadWeather} disabled={weatherLoading}
+                className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-red-700 transition font-medium disabled:opacity-50 whitespace-nowrap">
+                {weatherLoading ? 'Lädt...' : 'Wetter laden'}
+              </button>
+            </div>
+          </div>
+          {data.weather.loaded && (
+            <div className="grid grid-cols-2 gap-3 text-sm bg-gray-50 rounded-lg p-3">
+              <div><span className="text-mid">Temperatur:</span> <span className="font-medium">{data.weather.temperature}</span></div>
+              <div><span className="text-mid">Bedingung:</span> <span className="font-medium">{data.weather.condition}</span></div>
+              <div><span className="text-mid">Wind:</span> <span className="font-medium">{data.weather.wind}</span></div>
+              <div><span className="text-mid">Luftfeuchtigkeit:</span> <span className="font-medium">{data.weather.humidity}</span></div>
+            </div>
+          )}
+        </Section>
+
+        {/* ==================== BEMERKUNGEN ==================== */}
+        <Section title={de.sections.bemerkungen}>
+          <p className="text-xs text-mid mb-1">Alle Felder optional</p>
+          <div>
+            <label className="block text-sm font-medium text-dark mb-1">Besondere Vorkommnisse</label>
             <div className="relative">
-              <input type="text" value={data.muellBauschutt} onChange={e => update({ muellBauschutt: e.target.value })}
-                placeholder="z.B. Bauschutt 200kg, Mineralwolle 50kg" className="input-field pr-10" />
-              <VoiceButton {...voiceProps(v => update({ muellBauschutt: v }), data.muellBauschutt)} />
+              <AutoTextarea value={data.vorkommnisse} onChange={e => update({ vorkommnisse: e.target.value })}
+                placeholder="Gab es besondere Vorkommnisse?" rows={2} className="input-field pr-10 resize-y overflow-hidden" />
+              <VoiceButton {...voiceProps(v => update({ vorkommnisse: v }), data.vorkommnisse)} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-dark mb-1">Was lief heute besonders gut?</label>
+            <div className="relative">
+              <AutoTextarea value={data.wasLiefGut} onChange={e => update({ wasLiefGut: e.target.value })}
+                placeholder="Positive Punkte" rows={2} className="input-field pr-10 resize-y overflow-hidden" />
+              <VoiceButton {...voiceProps(v => update({ wasLiefGut: v }), data.wasLiefGut)} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-dark mb-1">Was lief heute nicht gut?</label>
+            <div className="relative">
+              <AutoTextarea value={data.wasLiefNichtGut} onChange={e => update({ wasLiefNichtGut: e.target.value })}
+                placeholder="Verbesserungspunkte" rows={2} className="input-field pr-10 resize-y overflow-hidden" />
+              <VoiceButton {...voiceProps(v => update({ wasLiefNichtGut: v }), data.wasLiefNichtGut)} />
             </div>
           </div>
         </Section>
@@ -652,53 +826,6 @@ export default function ReportForm() {
               ))}
             </div>
           )}
-        </Section>
-
-        {/* ==================== WETTER ==================== */}
-        <Section title={de.sections.wetter}>
-          {data.weather.loaded ? (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><span className="text-mid">Temperatur:</span> <span className="font-medium">{data.weather.temperature}</span></div>
-              <div><span className="text-mid">Bedingung:</span> <span className="font-medium">{data.weather.condition}</span></div>
-              <div><span className="text-mid">Wind:</span> <span className="font-medium">{data.weather.wind}</span></div>
-              <div><span className="text-mid">Luftfeuchtigkeit:</span> <span className="font-medium">{data.weather.humidity}</span></div>
-            </div>
-          ) : (
-            <p className="text-sm text-mid">Wetterdaten werden anhand der Baustellenadresse geladen.</p>
-          )}
-          <button type="button" onClick={loadWeather} disabled={weatherLoading}
-            className="px-4 py-2 border border-border rounded-lg text-sm text-dark font-medium hover:bg-gray-50 transition disabled:opacity-50">
-            {weatherLoading ? 'Wird geladen...' : 'Wetter aktualisieren'}
-          </button>
-        </Section>
-
-        {/* ==================== BEMERKUNGEN ==================== */}
-        <Section title={de.sections.bemerkungen}>
-          <p className="text-xs text-mid mb-1">Alle Felder optional</p>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Besondere Vorkommnisse</label>
-            <div className="relative">
-              <textarea value={data.vorkommnisse} onChange={e => update({ vorkommnisse: e.target.value })}
-                placeholder="Gab es besondere Vorkommnisse?" rows={2} className="input-field pr-10 resize-y" />
-              <VoiceButton {...voiceProps(v => update({ vorkommnisse: v }), data.vorkommnisse)} />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Was lief heute besonders gut?</label>
-            <div className="relative">
-              <textarea value={data.wasLiefGut} onChange={e => update({ wasLiefGut: e.target.value })}
-                placeholder="Positive Punkte" rows={2} className="input-field pr-10 resize-y" />
-              <VoiceButton {...voiceProps(v => update({ wasLiefGut: v }), data.wasLiefGut)} />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-dark mb-1">Was lief heute nicht gut?</label>
-            <div className="relative">
-              <textarea value={data.wasLiefNichtGut} onChange={e => update({ wasLiefNichtGut: e.target.value })}
-                placeholder="Verbesserungspunkte" rows={2} className="input-field pr-10 resize-y" />
-              <VoiceButton {...voiceProps(v => update({ wasLiefNichtGut: v }), data.wasLiefNichtGut)} />
-            </div>
-          </div>
         </Section>
 
         {/* ==================== UNTERSCHRIFTEN ==================== */}
