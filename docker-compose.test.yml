@@ -1,11 +1,15 @@
-# Test-Stack für E2E-Tests. Eigene Volumes/Ports, damit es parallel zum
+# Test-Stack für E2E-Tests. Eigene Volumes/Ports, damit er parallel zum
 # Dev-Stack laufen kann (Dev nutzt 80/3001/5432/21, Test nutzt andere Ports).
 #
-# Hochfahren:  docker compose -f docker-compose.test.yml up --build -d
-# Abbau:       docker compose -f docker-compose.test.yml down -v
+# Service-Namen sind absichtlich identisch zum Dev-Stack ("server", "postgres",
+# "ftp", "client"), weil die nginx-Config im Client-Image fest "server:3001"
+# referenziert. Der Compose-Project-Name (-p) trennt die beiden Stacks.
+#
+# Hochfahren:  docker compose -p bautagesbericht-test -f docker-compose.test.yml up --build -d
+# Abbau:       docker compose -p bautagesbericht-test -f docker-compose.test.yml down -v
 
 services:
-  postgres-test:
+  postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -20,12 +24,12 @@ services:
       timeout: 5s
       retries: 5
 
-  ftp-test:
+  ftp:
     image: delfer/alpine-ftp-server
     restart: unless-stopped
     environment:
       USERS: "ftpuser|ftppass|/home/ftpuser|10000"
-      ADDRESS: ftp-test
+      ADDRESS: ftp
       MIN_PORT: 21100
       MAX_PORT: 21110
     ports:
@@ -34,7 +38,7 @@ services:
     volumes:
       - ./ftp-seed:/home/ftpuser
 
-  server-test:
+  server:
     build:
       context: ./server
       dockerfile: Dockerfile
@@ -44,26 +48,26 @@ services:
     environment:
       PORT: 3001
       NODE_ENV: production
-      DATABASE_URL: postgresql://patzig:patzig_secret@postgres-test:5432/bautagesbericht
+      DATABASE_URL: postgresql://patzig:patzig_secret@postgres:5432/bautagesbericht
       JWT_SECRET: test-jwt-secret-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
       JWT_REFRESH_SECRET: test-refresh-secret-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
       ENCRYPTION_KEY: test-encryption-key-32bytes!!!!!!
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: admin123
       UPLOADS_DIR: /app/uploads
-      FTP_HOST: ftp-test
+      FTP_HOST: ftp
       FTP_PORT: "21"
       FTP_USER: ftpuser
       FTP_PASSWORD: ftppass
     volumes:
       - uploads-test:/app/uploads
     depends_on:
-      postgres-test:
+      postgres:
         condition: service_healthy
-      ftp-test:
+      ftp:
         condition: service_started
 
-  client-test:
+  client:
     build:
       context: ./client
       dockerfile: Dockerfile
@@ -71,7 +75,7 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - server-test
+      - server
 
 volumes:
   uploads-test:

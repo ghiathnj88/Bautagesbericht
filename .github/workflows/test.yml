@@ -131,7 +131,7 @@ jobs:
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
       - name: Hochfahren des Test-Stacks
-        run: docker compose -f docker-compose.test.yml up --build -d
+        run: docker compose -p bautagesbericht-test -f docker-compose.test.yml up --build -d
       - name: Warten auf Server- und Client-Health
         run: |
           for i in {1..60}; do
@@ -144,7 +144,7 @@ jobs:
           echo "Stack nicht vollständig erreichbar"
           echo '--- Server-Health ---'; curl -v http://localhost:3002/api/health || true
           echo '--- Client ---';        curl -v http://localhost:8080/ || true
-          echo '--- Container-Status ---'; docker compose -f docker-compose.test.yml ps
+          echo '--- Container-Status ---'; docker compose -p bautagesbericht-test -f docker-compose.test.yml ps
           exit 1
       - name: E2E-Tests
         env:
@@ -160,4 +160,4 @@ jobs:
           retention-days: 7
       - name: Stack abbauen
         if: always()
-        run: docker compose -f docker-compose.test.yml down -v
+        run: docker compose -p bautagesbericht-test -f docker-compose.test.yml down -v
