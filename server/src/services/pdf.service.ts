@@ -30,7 +30,7 @@ interface PdfReportData {
   materialVerwendet: string;
   verbrauchsmaterialFahrzeug: string;
   machines: { name: string; durationHours: number; durationMinutes: number }[];
-  entsorgung?: { material: string; menge: string }[];
+  entsorgung?: { material: string; mengeKg?: number; menge?: string }[];
   muellBauschutt: string;
   weather?: { temperature: string; condition: string; wind: string; humidity: string; loaded: boolean };
   vorkommnisse: string;
@@ -40,6 +40,7 @@ interface PdfReportData {
   signatureBauleiter?: string;
   signatureCustomer?: string;
   photoBase64s?: string[]; // base64 data URIs of uploaded photos
+  unterschriftOrt?: string; // Ort, der vor "den DD.MM.YYYY" über den Unterschriften erscheint
 }
 
 function esc(str: string | undefined | null): string {
@@ -154,7 +155,12 @@ function buildHtml(data: PdfReportData): string {
   ${(data.entsorgung && data.entsorgung.length > 0)
     ? `<h2>Entsorgung</h2>
        <table><tr><th>Material</th><th>Menge</th></tr>
-       ${data.entsorgung.map(e => `<tr><td>${esc(e.material)}</td><td>${esc(e.menge)}</td></tr>`).join('')}
+       ${data.entsorgung.map(e => {
+          const mengeText = typeof e.mengeKg === 'number' && e.mengeKg > 0
+            ? `${e.mengeKg} kg`
+            : (e.menge || ''); // Fallback für alte Berichte mit Freitext-Menge
+          return `<tr><td>${esc(e.material)}</td><td>${esc(mengeText)}</td></tr>`;
+        }).join('')}
        </table>`
     : (data.muellBauschutt ? `<h2>Entsorgung</h2><p class="text-block">${esc(data.muellBauschutt)}</p>` : '')}
 
@@ -169,7 +175,14 @@ function buildHtml(data: PdfReportData): string {
 
   ${photosHtml}
 
-  <div style="margin-top: 30px;">
+  <div style="margin-top: 30px; text-align: left; font-size: 11px;">
+    ${data.unterschriftOrt && data.datum ? `${esc(data.unterschriftOrt)}, den ${esc(data.datum)}`
+      : data.unterschriftOrt ? esc(data.unterschriftOrt)
+      : data.datum ? `den ${esc(data.datum)}`
+      : ''}
+  </div>
+
+  <div style="margin-top: 8px;">
     <div class="signature-box">
       ${data.signatureBauleiter ? `<img src="${data.signatureBauleiter}" />` : '<div style="height:60px"></div>'}
       <div class="signature-label">Bauleiter: ${esc(data.bauleiter)}</div>

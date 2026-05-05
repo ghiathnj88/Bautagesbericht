@@ -1,0 +1,158 @@
+name: Test Suite
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  lint-typecheck:
+    name: Lint & TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+      - name: Server typecheck
+        run: |
+          cd server
+          npm ci
+          npx tsc --noEmit
+      - name: Client typecheck
+        run: |
+          cd client
+          npm ci
+          npx tsc -b --noEmit
+
+  backend-unit:
+    name: Backend Unit-Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+      - name: Install + run unit tests
+        run: |
+          cd server
+          npm ci
+          npm run test:unit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-unit-coverage
+          path: server/coverage/
+          retention-days: 7
+
+  backend-integration:
+    name: Backend Integration-Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: patzig
+          POSTGRES_PASSWORD: patzig_secret
+          POSTGRES_DB: bautagesbericht_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U patzig -d bautagesbericht_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+      - name: Install + run integration tests
+        env:
+          TEST_DATABASE_URL: postgresql://patzig:patzig_secret@localhost:5432/bautagesbericht_test
+          JWT_SECRET: ci-jwt-secret-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+          JWT_REFRESH_SECRET: ci-refresh-secret-BBBBBBBBBBBBBBBBBBBBBBBB
+          ENCRYPTION_KEY: ci-encryption-key-32-bytes!!!!!!!!!!
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: admin123
+          FTP_HOST: localhost
+          FTP_PORT: "21"
+          FTP_USER: ftpuser
+          FTP_PASSWORD: ftppass
+        run: |
+          cd server
+          npm ci
+          npm run test:integration
+
+  frontend-unit:
+    name: Frontend Unit-Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - name: Install + run frontend tests
+        run: |
+          cd client
+          npm ci
+          npm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-unit-coverage
+          path: client/coverage/
+          retention-days: 7
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    # E2E nur auf main + Pull-Requests — auf Feature-Branches übersprungen.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    needs: [backend-unit, frontend-unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Hochfahren des Test-Stacks
+        run: docker compose -f docker-compose.test.yml up --build -d
+      - name: Warten auf Server-Health
+        run: |
+          for i in {1..60}; do
+            if curl -sf http://localhost:3002/api/health > /dev/null; then
+              echo "Server bereit nach $i Sekunden"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Server nicht erreichbar"; exit 1
+      - name: E2E-Tests
+        env:
+          E2E_BASE_URL: http://localhost:8080
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      - name: Stack abbauen
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v

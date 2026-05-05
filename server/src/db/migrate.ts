@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS reports (
   bv_nummer VARCHAR(50),
   auftraggeber VARCHAR(200),
   lieferanschrift TEXT,
+  projektbezeichnung TEXT,
+  sollstunden_minuten INTEGER,
   datum VARCHAR(20),
   ftp_source_path TEXT,
   ftp_report_path TEXT,
@@ -34,6 +36,10 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   completed_at TIMESTAMP
 );
+
+-- Spalten für bestehende Installationen nachziehen (idempotent)
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS projektbezeichnung TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS sollstunden_minuten INTEGER;
 
 CREATE TABLE IF NOT EXISTS report_photos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

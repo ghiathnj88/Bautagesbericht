@@ -7,3 +7,10 @@ uploads/*
 server/data/
 .DS_Store
 Thumbs.db
+
+# FTP-Seed: Struktur ist eingecheckt (.gitkeep), echte Test-Daten nicht
+ftp-seed/**/*.pdf
+ftp-seed/**/*.jpg
+ftp-seed/**/*.jpeg
+ftp-seed/**/*.png
+ftp-seed/**/*.mp4

@@ -24,6 +24,8 @@ export const reports = pgTable('reports', {
   bvNummer: varchar('bv_nummer', { length: 50 }),
   auftraggeber: varchar('auftraggeber', { length: 200 }),
   lieferanschrift: text('lieferanschrift'),
+  projektbezeichnung: text('projektbezeichnung'),
+  sollstundenMinuten: integer('sollstunden_minuten'),
   datum: varchar('datum', { length: 20 }),
   ftpSourcePath: text('ftp_source_path'),
   ftpReportPath: text('ftp_report_path'),

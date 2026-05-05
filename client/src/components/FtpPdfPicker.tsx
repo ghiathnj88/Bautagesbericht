@@ -3,6 +3,9 @@ import { apiFetch } from '../api/client';
 
 type FtpEntry = { name: string; type: 'dir' | 'file'; size: number };
 
+// Patzig-Projektordner: "<Projektnr>_<Name>_<Ort>_…"
+const PROJECT_DIR_RE = /^(\d{4,6})_(.+)$/;
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -15,13 +18,15 @@ export default function FtpPdfPicker({ open, onClose, onSelect }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadDir = useCallback(async (p: string) => {
+  const loadDir = useCallback(async (p: string | null) => {
     setLoading(true);
     setError('');
     try {
-      const res = await apiFetch<{ path: string; entries: FtpEntry[] }>(
-        `/reports/ftp-browse?path=${encodeURIComponent(p)}`
-      );
+      const url = p === null
+        ? '/reports/ftp-browse'
+        : `/reports/ftp-browse?path=${encodeURIComponent(p)}`;
+      const res = await apiFetch<{ path: string; entries: FtpEntry[] }>(url);
+      setPath(res.path);
       setEntries(res.entries);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'FTP-Fehler');
@@ -33,20 +38,15 @@ export default function FtpPdfPicker({ open, onClose, onSelect }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    setPath('/');
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    loadDir(path);
-  }, [open, path, loadDir]);
+    loadDir(null);
+  }, [open, loadDir]);
 
   const joinPath = (base: string, name: string) =>
     base === '/' ? `/${name}` : `${base}/${name}`;
 
   const handleEntry = (entry: FtpEntry) => {
     if (entry.type === 'dir') {
-      setPath(joinPath(path, entry.name));
+      loadDir(joinPath(path, entry.name));
     } else {
       const full = joinPath(path, entry.name);
       onSelect(full, entry.name);
@@ -58,7 +58,7 @@ export default function FtpPdfPicker({ open, onClose, onSelect }: Props) {
     if (path === '/') return;
     const parts = path.split('/').filter(Boolean);
     parts.pop();
-    setPath(parts.length === 0 ? '/' : '/' + parts.join('/'));
+    loadDir(parts.length === 0 ? '/' : '/' + parts.join('/'));
   };
 
   if (!open) return null;
@@ -112,50 +112,62 @@ export default function FtpPdfPicker({ open, onClose, onSelect }: Props) {
           )}
           {!loading &&
             !error &&
-            entries.map((entry) => (
-              <button
-                type="button"
-                key={entry.name}
-                onClick={() => handleEntry(entry)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 border-b border-border text-left"
-              >
-                {entry.type === 'dir' ? (
-                  <svg
-                    className="w-5 h-5 text-primary flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="w-5 h-5 text-red-500 flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                    />
-                  </svg>
-                )}
-                <span className="flex-1 text-sm text-dark truncate">{entry.name}</span>
-                {entry.type === 'file' && (
-                  <span className="text-xs text-mid flex-shrink-0">
-                    {(entry.size / 1024).toFixed(0)} KB
-                  </span>
-                )}
-              </button>
-            ))}
+            entries.map((entry) => {
+              const projMatch = entry.type === 'dir' ? entry.name.match(PROJECT_DIR_RE) : null;
+              return (
+                <button
+                  type="button"
+                  key={entry.name}
+                  onClick={() => handleEntry(entry)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 border-b border-border text-left"
+                >
+                  {entry.type === 'dir' ? (
+                    <svg
+                      className="w-5 h-5 text-primary flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-5 h-5 text-red-500 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                      />
+                    </svg>
+                  )}
+                  {projMatch ? (
+                    <span className="flex-1 flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-mono bg-primary/10 text-primary px-2 py-0.5 rounded flex-shrink-0">
+                        {projMatch[1]}
+                      </span>
+                      <span className="text-sm text-dark truncate">{projMatch[2]}</span>
+                    </span>
+                  ) : (
+                    <span className="flex-1 text-sm text-dark truncate">{entry.name}</span>
+                  )}
+                  {entry.type === 'file' && (
+                    <span className="text-xs text-mid flex-shrink-0">
+                      {(entry.size / 1024).toFixed(0)} KB
+                    </span>
+                  )}
+                </button>
+              );
+            })}
         </div>
       </div>
     </div>

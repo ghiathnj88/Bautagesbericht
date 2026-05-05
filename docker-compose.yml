@@ -18,6 +18,20 @@ services:
       timeout: 5s
       retries: 5
 
+  ftp:
+    image: delfer/alpine-ftp-server
+    restart: unless-stopped
+    environment:
+      USERS: "ftpuser|ftppass|/home/ftpuser|10000"
+      ADDRESS: ftp
+      MIN_PORT: 21000
+      MAX_PORT: 21010
+    ports:
+      - "21:21"
+      - "21000-21010:21000-21010"
+    volumes:
+      - ./ftp-seed:/home/ftpuser
+
   server:
     build:
       context: ./server
@@ -35,11 +49,17 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       UPLOADS_DIR: /app/uploads
+      FTP_HOST: ${FTP_HOST:-ftp}
+      FTP_PORT: ${FTP_PORT:-21}
+      FTP_USER: ${FTP_USER:-ftpuser}
+      FTP_PASSWORD: ${FTP_PASSWORD:-ftppass}
     volumes:
       - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
+      ftp:
+        condition: service_started
 
   client:
     build:

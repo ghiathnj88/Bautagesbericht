@@ -31,6 +31,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
+COPY assets ./assets
 
 RUN mkdir -p /app/uploads && chown -R node:node /app
 USER node

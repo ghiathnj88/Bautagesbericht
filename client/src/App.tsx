@@ -4,13 +4,15 @@ import ProtectedRoute from './auth/ProtectedRoute';
 import LoginPage from './auth/LoginPage';
 import ReportForm from './components/ReportForm';
 import AdminPanel from './components/AdminPanel';
+import BauleiterDashboard from './components/BauleiterDashboard';
+import FtpBrowser from './components/FtpBrowser';
 
 function HomePage() {
   const { user } = useAuth();
   if (user?.role === 'admin') {
     return <Navigate to="/admin" replace />;
   }
-  return <Navigate to="/report" replace />;
+  return <BauleiterDashboard />;
 }
 
 export default function App() {
@@ -22,6 +24,9 @@ export default function App() {
       } />
       <Route path="/report" element={
         <ProtectedRoute><ReportForm /></ProtectedRoute>
+      } />
+      <Route path="/ftp" element={
+        <ProtectedRoute><FtpBrowser /></ProtectedRoute>
       } />
       <Route path="/admin/*" element={
         <ProtectedRoute requiredRole="admin"><AdminPanel /></ProtectedRoute>

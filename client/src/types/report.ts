@@ -3,6 +3,7 @@ export interface WorkerEntry {
   anfang: string;  // HH:MM
   ende: string;    // HH:MM
   pause: string;   // z.B. "12:00-12:30"
+  azubi: boolean;  // Stunden zählen separat als Azubistunden in der Projekt-Auswertung
 }
 
 export interface MachineItem {
@@ -13,7 +14,7 @@ export interface MachineItem {
 
 export interface EntsorgungItem {
   material: string;
-  menge: string;
+  mengeKg: number; // Menge in kg (numerisch, summierbar in der Projekt-Auswertung)
 }
 
 export interface WeatherData {
@@ -30,6 +31,8 @@ export interface ReportData {
   lieferanschrift: string;
   bvNummer: string;
   kundennummer: string;
+  projektbezeichnung: string;
+  sollstundenMinuten: number; // 0 = unbekannt/nicht extrahiert
   datum: string;
 
   // Personal
@@ -64,6 +67,7 @@ export interface ReportData {
   wasLiefNichtGut: string;
 
   // Unterschriften
+  unterschriftOrt: string; // Pflichtfeld: Ort, an dem unterschrieben wurde (erscheint im PDF vor den Unterschriften)
   signatureBauleiter: string;
   signatureCustomer: string;
 
@@ -84,6 +88,8 @@ export function createEmptyReport(): ReportData {
     lieferanschrift: '',
     bvNummer: '',
     kundennummer: '',
+    projektbezeichnung: '',
+    sollstundenMinuten: 0,
     datum: new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
     bauleiter: '',
     bauleiterAnfang: '07:00',
@@ -102,6 +108,7 @@ export function createEmptyReport(): ReportData {
     vorkommnisse: '',
     wasLiefGut: '',
     wasLiefNichtGut: '',
+    unterschriftOrt: '',
     signatureBauleiter: '',
     signatureCustomer: '',
     customerEmail: '',

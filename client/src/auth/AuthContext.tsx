@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiFetch<{ accessToken: string }>('/auth/refresh');
+        const data = await apiFetch<{ accessToken: string }>('/auth/refresh', { method: 'POST' });
         setAccessToken(data.accessToken);
         const me = await apiFetch<User>('/auth/me');
         setUser(me);

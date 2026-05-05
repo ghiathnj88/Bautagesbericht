@@ -77,6 +77,8 @@ export default function ReportForm() {
   const [arbeitsauftragName, setArbeitsauftragName] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [ftpPickerOpen, setFtpPickerOpen] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [saveDraftDialogOpen, setSaveDraftDialogOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const sigBauleiterRef = useRef<SignatureCanvas>(null);
@@ -96,14 +98,14 @@ export default function ReportForm() {
 
   // === Workers ===
   const addWorker = () => {
-    update({ workers: [...data.workers, { name: '', anfang: '07:00', ende: '16:00', pause: '12:00-12:30' }] });
+    update({ workers: [...data.workers, { name: '', anfang: '07:00', ende: '16:00', pause: '12:00-12:30', azubi: false }] });
   };
   const removeWorker = (i: number) => {
     update({ workers: data.workers.filter((_, idx) => idx !== i) });
   };
-  const updateWorker = (i: number, field: keyof WorkerEntry, val: string) => {
+  const updateWorker = (i: number, field: keyof WorkerEntry, val: string | boolean) => {
     const w = [...data.workers];
-    w[i] = { ...w[i], [field]: val };
+    w[i] = { ...w[i], [field]: val } as WorkerEntry;
     update({ workers: w });
   };
 
@@ -134,14 +136,14 @@ export default function ReportForm() {
 
   // === Entsorgung ===
   const addEntsorgung = () => {
-    update({ entsorgung: [...data.entsorgung, { material: '', menge: '' }] });
+    update({ entsorgung: [...data.entsorgung, { material: '', mengeKg: 0 }] });
   };
   const removeEntsorgung = (i: number) => {
     update({ entsorgung: data.entsorgung.filter((_, idx) => idx !== i) });
   };
-  const updateEntsorgung = (i: number, field: keyof EntsorgungItem, val: string) => {
+  const updateEntsorgung = (i: number, field: keyof EntsorgungItem, val: string | number) => {
     const e = [...data.entsorgung];
-    e[i] = { ...e[i], [field]: val };
+    e[i] = { ...e[i], [field]: val } as EntsorgungItem;
     update({ entsorgung: e });
   };
 
@@ -158,21 +160,10 @@ export default function ReportForm() {
         }
       );
 
-      // Decide where the finished Bautagesbericht should later be written on FTP.
-      // Convention (professional project layout):
-      //   .../Arbeitsauftrag <NN>/
-      //     ├── Arbeitsauftrag/   ← PDF des Auftrags liegt hier
-      //     ├── Bilder/
-      //     └── Bautagesbericht/  ← fertiger Bericht soll hierhin
-      // If the picked PDF's parent folder is literally named "Arbeitsauftrag",
-      // redirect the save target to the sibling folder "Bautagesbericht".
-      // Otherwise fall back to the same folder (old behavior).
-      const parentDir = remotePath.substring(0, remotePath.lastIndexOf('/')) || '/';
-      const segments = parentDir.split('/');
-      const lastSegment = segments[segments.length - 1];
-      const ftpSourcePath = lastSegment === 'Arbeitsauftrag'
-        ? segments.slice(0, -1).join('/') + '/Bautagesbericht'
-        : parentDir;
+      // ftpSourcePath = Monteur-Ordner des Projekts. Beim Senden landet der
+      // fertige Bericht in `${ftpSourcePath}/BTB/` und die Fotos in
+      // `${ftpSourcePath}/<YY-MM-DD>/` (siehe Patzig-Verzeichnisstruktur).
+      const ftpSourcePath = remotePath.substring(0, remotePath.lastIndexOf('/')) || '/';
 
       const e = result.extracted;
       const updates: Partial<ReportData> = { ftpSourcePath };
@@ -180,6 +171,11 @@ export default function ReportForm() {
       if (e.lieferanschrift) updates.lieferanschrift = e.lieferanschrift;
       if (e.bvNummer) updates.bvNummer = e.bvNummer;
       if (e.kundennummer) updates.kundennummer = e.kundennummer;
+      if (e.projektbezeichnung) updates.projektbezeichnung = e.projektbezeichnung;
+      if (e.sollstundenMinuten) {
+        const min = parseInt(e.sollstundenMinuten, 10);
+        if (!Number.isNaN(min)) updates.sollstundenMinuten = min;
+      }
       update(updates);
 
       setArbeitsauftragName(fileName);
@@ -199,6 +195,37 @@ export default function ReportForm() {
     handleFtpPdfSelect(auftragPath, fileName);
     setSearchParams({}, { replace: true });
   }, [searchParams, setSearchParams, handleFtpPdfSelect]);
+
+  // Wenn ?id=<reportId> in der URL steht (aus dem Bauleiter-Hauptmenü beim
+  // Klick auf "Weiterbearbeiten"), wird der Bericht aus der DB geladen statt
+  // aus LocalStorage. So funktioniert "Weiterbearbeiten" auch geräteübergreifend.
+  useEffect(() => {
+    const reportIdParam = searchParams.get('id');
+    if (!reportIdParam) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await apiFetch<{ id: string; dataJson: ReportData }>(`/reports/${reportIdParam}`);
+        if (cancelled) return;
+        if (result.dataJson) {
+          // Heutiges Datum überschreibt das gespeicherte — gleiche Logik wie beim
+          // LocalStorage-Draft-Restore in loadDraft().
+          const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          setData({ ...createEmptyReport(), ...result.dataJson, datum: today });
+          setReportId(result.id);
+          // LocalStorage leeren, damit der DB-Zustand gewinnt und Auto-Save den
+          // korrekten Stand persistiert. Sonst würde ein veralteter Browser-Draft
+          // den frisch geladenen DB-Stand überschreiben.
+          try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+        }
+        setSearchParams({}, { replace: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Bericht konnte nicht geladen werden');
+        setSearchParams({}, { replace: true });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchParams, setSearchParams]);
 
   // === Photo upload ===
   const handlePhotos = async (files: FileList | null) => {
@@ -335,6 +362,7 @@ export default function ReportForm() {
     if (!data.materialVerwendet.trim()) errs.push('Verwendetes Material ist ein Pflichtfeld');
     if (!data.verbrauchsmaterialFahrzeug.trim()) errs.push('Verbrauchsmaterial vom Fahrzeug ist ein Pflichtfeld');
     if (data.photoPaths.length < MIN_PHOTOS) errs.push(`Mindestens ${MIN_PHOTOS} Fotos erforderlich (${data.photoPaths.length}/${MIN_PHOTOS})`);
+    if (!data.unterschriftOrt.trim()) errs.push('Ort der Unterschrift ist ein Pflichtfeld');
     if (!data.signatureBauleiter) errs.push('Bauleiter-Unterschrift erforderlich');
     if (!data.customerEmail.trim()) errs.push('E-Mail-Adresse des Kunden ist ein Pflichtfeld');
     if (data.customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.customerEmail)) {
@@ -374,6 +402,32 @@ export default function ReportForm() {
       setError(err instanceof Error ? err.message : 'Fehler beim Absenden');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Explizit speichern ohne Validierung — Bauleiter kann jederzeit pausieren
+  // und später (auch von einem anderen Gerät) über "Weiterbearbeiten" zurück.
+  const handleSaveDraft = async () => {
+    setError('');
+    setSavingDraft(true);
+    try {
+      if (reportId) {
+        await apiFetch(`/reports/${reportId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...data, status: 'draft' }),
+        });
+      } else {
+        const result = await apiFetch<{ id: string }>('/reports', {
+          method: 'POST',
+          body: JSON.stringify({ ...data, status: 'draft' }),
+        });
+        setReportId(result.id);
+      }
+      setSaveDraftDialogOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Zwischenspeichern fehlgeschlagen');
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -608,6 +662,15 @@ export default function ReportForm() {
                           placeholder="12:00-12:30" className="input-field text-xs" />
                       </div>
                     </div>
+                    <label className="flex items-center gap-2 text-xs text-dark cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={!!w.azubi}
+                        onChange={e => updateWorker(i, 'azubi', e.target.checked)}
+                        className="w-4 h-4 accent-primary"
+                      />
+                      <span>Azubi</span>
+                    </label>
                   </div>
                 ))}
 
@@ -716,9 +779,18 @@ export default function ReportForm() {
                     placeholder="Material (z.B. Bauschutt, Mineralwolle, Asbest)" className="input-field pr-10" />
                   <VoiceButton {...voiceProps(v => updateEntsorgung(i, 'material', v), e.material, 'replace')} />
                 </div>
-                <div>
-                  <input type="text" value={e.menge} onChange={ev => updateEntsorgung(i, 'menge', ev.target.value)}
-                    placeholder="Menge (z.B. 200 kg, 3 Container)" className="input-field" />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.1"
+                    value={e.mengeKg ?? 0}
+                    onChange={ev => updateEntsorgung(i, 'mengeKg', parseFloat(ev.target.value) || 0)}
+                    placeholder="Menge"
+                    className="input-field flex-1"
+                  />
+                  <span className="text-sm text-mid flex-shrink-0">kg</span>
                 </div>
               </div>
             ))}
@@ -830,6 +902,19 @@ export default function ReportForm() {
 
         {/* ==================== UNTERSCHRIFTEN ==================== */}
         <Section title={de.sections.unterschriften}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-dark mb-1">{req('Ort der Unterschrift')}</label>
+            <input
+              type="text"
+              value={data.unterschriftOrt}
+              onChange={e => update({ unterschriftOrt: e.target.value })}
+              placeholder="z.B. Renningen"
+              className="input-field"
+            />
+            <p className="text-xs text-mid mt-1">
+              Erscheint im PDF vor den Unterschriften: „{data.unterschriftOrt || 'Ort'}, den {data.datum || 'TT.MM.JJJJ'}"
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             {/* Bauleiter */}
             <div>
@@ -868,17 +953,68 @@ export default function ReportForm() {
         {/* ==================== ACTIONS ==================== */}
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{error}</p>}
 
-        <div className="flex gap-3 pb-8">
-          <button type="button" onClick={handlePreview}
-            className="flex-1 py-3 border border-border rounded-lg text-sm font-semibold text-dark hover:bg-gray-50 transition">
+        <div className="flex flex-col sm:flex-row gap-3 pb-8">
+          <button type="button" onClick={handleSaveDraft} disabled={savingDraft || submitting}
+            className="flex-1 py-3 border border-border rounded-lg text-sm font-semibold text-dark hover:bg-gray-50 transition disabled:opacity-50">
+            {savingDraft ? 'Speichert…' : 'Zwischenspeichern'}
+          </button>
+          <button type="button" onClick={handlePreview} disabled={savingDraft || submitting}
+            className="flex-1 py-3 border border-border rounded-lg text-sm font-semibold text-dark hover:bg-gray-50 transition disabled:opacity-50">
             Vorschau erstellen
           </button>
-          <button type="button" onClick={handleSubmit} disabled={submitting}
+          <button type="button" onClick={handleSubmit} disabled={submitting || savingDraft}
             className="flex-1 py-3 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition disabled:opacity-50">
             {submitting ? 'Wird gesendet...' : 'Bericht senden'}
           </button>
         </div>
       </main>
+
+      {/* Zwischenspeichern-Bestätigungs-Dialog */}
+      {saveDraftDialogOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setSaveDraftDialogOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 space-y-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-dark">Bericht zwischengespeichert</h3>
+                <p className="text-xs text-mid">Sie können jederzeit über das Hauptmenü weitermachen.</p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => setSaveDraftDialogOpen(false)}
+                className="flex-1 px-4 py-2 border border-border text-dark rounded-md text-sm font-medium hover:bg-gray-50 transition"
+              >
+                Hier weiterbearbeiten
+              </button>
+              <button
+                onClick={() => {
+                  // LocalStorage leeren, damit beim nächsten "Bericht erstellen"
+                  // (aus dem Hauptmenü) ein frisches Formular erscheint, statt
+                  // den eben gespeicherten Draft zu restoren. Der Bauleiter kann
+                  // den Bericht über "Weiterbearbeiten" aus der Drafts-Liste
+                  // zurückholen.
+                  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+                  navigate('/');
+                }}
+                className="flex-1 px-4 py-2 bg-primary text-white rounded-md text-sm font-semibold hover:bg-red-700 transition"
+              >
+                Zum Hauptmenü
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
