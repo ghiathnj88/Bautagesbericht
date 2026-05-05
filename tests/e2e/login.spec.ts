@@ -20,10 +20,12 @@ test('Admin-Login + Hauptmenü erscheint', async ({ page }) => {
   await page.locator('input[type="password"]').first().fill('admin123');
   await page.locator('button[type="submit"], button:has-text("Anmelden"), button:has-text("Login")').first().click();
 
-  // Nach erfolgreichem Login: Admin landet auf /admin/* mit Tabs
-  await expect(page.locator('text=Projekte')).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('text=Berichte')).toBeVisible();
-  await expect(page.locator('text=Benutzerverwaltung')).toBeVisible();
+  // Nach erfolgreichem Login: Admin landet auf /admin/* mit drei Tab-Buttons.
+  // getByRole ist robuster als text-Selektoren — "Projekte" steht im UI auch
+  // als Heading und im Empty-State, getByRole filtert auf Buttons.
+  await expect(page.getByRole('button', { name: 'Projekte', exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('button', { name: 'Berichte', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Benutzerverwaltung', exact: true })).toBeVisible();
 });
 
 test('API health-check', async ({ request }) => {
