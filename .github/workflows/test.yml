@@ -132,15 +132,20 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Hochfahren des Test-Stacks
         run: docker compose -f docker-compose.test.yml up --build -d
-      - name: Warten auf Server-Health
+      - name: Warten auf Server- und Client-Health
         run: |
           for i in {1..60}; do
-            if curl -sf http://localhost:3002/api/health > /dev/null; then
-              echo "Server bereit nach $i Sekunden"; exit 0
+            if curl -sf http://localhost:3002/api/health > /dev/null \
+               && curl -sf http://localhost:8080/ > /dev/null; then
+              echo "Stack bereit nach $i Sekunden"; exit 0
             fi
             sleep 1
           done
-          echo "Server nicht erreichbar"; exit 1
+          echo "Stack nicht vollständig erreichbar"
+          echo '--- Server-Health ---'; curl -v http://localhost:3002/api/health || true
+          echo '--- Client ---';        curl -v http://localhost:8080/ || true
+          echo '--- Container-Status ---'; docker compose -f docker-compose.test.yml ps
+          exit 1
       - name: E2E-Tests
         env:
           E2E_BASE_URL: http://localhost:8080
