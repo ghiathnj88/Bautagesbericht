@@ -31,7 +31,9 @@ jobs:
         with:
           context: ./server
           push: true
-          tags: ghcr.io/ghiathnj88/bautagesbericht-server:latest
+          tags: |
+            ghcr.io/ghiathnj88/bautagesbericht-server:latest
+            ghcr.io/ghiathnj88/bautagesbericht-server:${{ github.sha }}
           provenance: false
           sbom: false
 
@@ -40,6 +42,8 @@ jobs:
         with:
           context: ./client
           push: true
-          tags: ghcr.io/ghiathnj88/bautagesbericht-client:latest
+          tags: |
+            ghcr.io/ghiathnj88/bautagesbericht-client:latest
+            ghcr.io/ghiathnj88/bautagesbericht-client:${{ github.sha }}
           provenance: false
           sbom: false
